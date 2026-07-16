@@ -1,0 +1,392 @@
+rules_version = '2';
+
+// =====================================================================
+// StudentOS Firestore Security Rules
+// =====================================================================
+//
+// Core principle: Users can ONLY read/write their own data.
+// Cross-user access is denied at the database layer.
+//
+// This file is deployed automatically when `firebase deploy` is run.
+// Update together with `src/firebase/constants.ts` and `docs/DATABASE.md`.
+// =====================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // -----------------------------------------------------------------
+    // Helpers
+    // -----------------------------------------------------------------
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function ownsDoc(uidField) {
+      return isSignedIn() && request.auth.uid == uidField;
+    }
+
+    function ownsResource() {
+      return isSignedIn() && request.auth.uid == resource.data.uid;
+    }
+
+    // -----------------------------------------------------------------
+    // users/{userId}
+    // -----------------------------------------------------------------
+    // Each user can read + write ONLY their own profile doc.
+    // The doc ID MUST match the auth uid.
+    match /users/{userId} {
+      allow read: if ownsDoc(userId);
+      allow create: if ownsDoc(userId);
+      allow update: if ownsDoc(userId);
+      allow delete: if ownsDoc(userId);
+    }
+
+    // -----------------------------------------------------------------
+    // junova_conversations/{conversationId}
+    // -----------------------------------------------------------------
+    match /junova_conversations/{conversationId} {
+      allow read, write: if ownsResource();
+
+      // Subcollection: messages/{messageId}
+      match /messages/{messageId} {
+        // Read: must own the parent conversation.
+        allow read: if isSignedIn()
+          && request.auth.uid == get(/databases/$(database)/documents/junova_conversations/$(conversationId)).data.uid;
+        // Write: must own the parent conversation AND set uid = auth.uid.
+        allow create: if isSignedIn()
+          && request.auth.uid == get(/databases/$(database)/documents/junova_conversations/$(conversationId)).data.uid
+          && request.resource.data.uid == request.auth.uid;
+        allow update, delete: if isSignedIn()
+          && request.auth.uid == get(/databases/$(database)/documents/junova_conversations/$(conversationId)).data.uid;
+      }
+    }
+
+    // -----------------------------------------------------------------
+    // junova_memory/{memoryId}
+    // -----------------------------------------------------------------
+    match /junova_memory/{memoryId} {
+      allow read, write: if ownsResource();
+    }
+
+    // -----------------------------------------------------------------
+    // notes/{noteId}
+    // -----------------------------------------------------------------
+    match /notes/{noteId} {
+      allow read, write: if ownsResource();
+    }
+
+    // -----------------------------------------------------------------
+    // note_folders/{folderId}
+    // -----------------------------------------------------------------
+    match /note_folders/{folderId} {
+      allow read, write: if ownsResource();
+    }
+
+    // -----------------------------------------------------------------
+    // plans/{planId} + plan_items subcollection
+    // -----------------------------------------------------------------
+    match /plans/{planId} {
+      allow read, write: if ownsResource();
+
+      match /items/{itemId} {
+        allow read, write: if isSignedIn()
+          && request.auth.uid == get(/databases/$(database)/documents/plans/$(planId)).data.uid;
+      }
+    }
+
+    // -----------------------------------------------------------------
+    // quizzes/{quizId} + quiz_questions subcollection
+    // -----------------------------------------------------------------
+    match /quizzes/{quizId} {
+      allow read, write: if ownsResource();
+
+      match /questions/{questionId} {
+        allow read, write: if isSignedIn()
+          && request.auth.uid == get(/databases/$(database)/documents/quizzes/$(quizId)).data.uid;
+      }
+    }
+
+    // -----------------------------------------------------------------
+    // quiz_attempts/{attemptId}
+    // -----------------------------------------------------------------
+    match /quiz_attempts/{attemptId} {
+      allow read, write: if ownsResource();
+    }
+
+    // -----------------------------------------------------------------
+    // exams/{examId}
+    // -----------------------------------------------------------------
+    match /exams/{examId} {
+      allow read, write: if ownsResource();
+    }
+
+    // -----------------------------------------------------------------
+    // progress_snapshots/{snapshotId}
+    // -----------------------------------------------------------------
+    match /progress_snapshots/{snapshotId} {
+      allow read, write: if ownsResource();
+    }
+
+    // -----------------------------------------------------------------
+    // achievements/{achievementId}
+    // -----------------------------------------------------------------
+    // Achievements are keyed by uid in the doc body (not doc ID), because
+    // multiple users can unlock the same achievement definition.
+    match /achievements/{achievementId} {
+      allow read, write: if ownsResource();
+    }
+
+    // =================================================================
+    // Sprint 13.0-security — Added missing collection rules.
+    //
+    // Every collection referenced by `src/firebase/constants.ts` must
+    // have an explicit `match` block here, otherwise the default-deny
+    // fallback below rejects all access in production.
+    //
+    // Two patterns are used:
+    //   1. Owner-scoped  — `allow read, write: if ownsResource();`
+    //      (uid field in doc body must match auth.uid)
+    //   2. Public-feed   — `allow read: if isSignedIn();`
+    //      `allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;`
+    //      `allow update, delete: if ownsResource();`
+    //
+    // No existing rule was modified or removed. The default-deny at the
+    // end of the file is preserved.
+    // =================================================================
+
+    // --- Junova AI (Sprint 4) ---------------------------------------
+    match /junova_teachers/{docId} {
+      allow read, write: if ownsResource();
+    }
+    match /junova_recommendations/{docId} {
+      allow read, write: if ownsResource();
+    }
+    match /junova_voice_preferences/{docId} {
+      allow read, write: if ownsResource();
+    }
+    match /junova_live_sessions/{docId} {
+      allow read, write: if ownsResource();
+    }
+
+    // --- Exam Center (Sprint 5) -------------------------------------
+    // NOTE: `exam_quizzes` is the actual collection name (constants.ts).
+    // The legacy `quizzes/{quizId}` rule above is retained for backward
+    // compatibility but does not match any live collection.
+    match /exam_quizzes/{docId} {
+      allow read, write: if ownsResource();
+    }
+    match /question_bank/{docId} {
+      allow read, write: if ownsResource();
+    }
+    match /practice_sessions/{docId} {
+      allow read, write: if ownsResource();
+    }
+    match /mistake_analysis/{docId} {
+      allow read, write: if ownsResource();
+    }
+    match /daily_practice/{docId} {
+      allow read, write: if ownsResource();
+    }
+
+    // --- Planner (Phase 4) ------------------------------------------
+    // NOTE: `study_plans` is the actual collection name (constants.ts).
+    // The legacy `plans/{planId}` rule above still covers the
+    // `plans/{planId}/items` subcollection used by `planItems()`.
+    match /study_plans/{docId} {
+      allow read, write: if ownsResource();
+    }
+    match /study_sessions/{docId} {
+      allow read, write: if ownsResource();
+    }
+    match /reminders/{docId} {
+      allow read, write: if ownsResource();
+    }
+    match /goals/{docId} {
+      allow read, write: if ownsResource();
+    }
+    match /revisions/{docId} {
+      allow read, write: if ownsResource();
+    }
+
+    // --- Notes Hub (Phase 6) ----------------------------------------
+    match /doubt_history/{docId} {
+      allow read, write: if ownsResource();
+    }
+
+    // --- Gamification / Analytics (Phase 7) -------------------------
+    match /analytics/{docId} {
+      allow read, write: if ownsResource();
+    }
+    match /xp_history/{docId} {
+      allow read, write: if ownsResource();
+    }
+    match /daily_streak/{docId} {
+      allow read, write: if ownsResource();
+    }
+    match /badges/{docId} {
+      allow read, write: if ownsResource();
+    }
+    match /challenges/{docId} {
+      allow read, write: if ownsResource();
+    }
+
+    // --- Premium / Settings / Tools (Phase 8) -----------------------
+    match /subscriptions/{docId} {
+      allow read, write: if ownsResource();
+    }
+    match /user_settings/{docId} {
+      allow read, write: if ownsResource();
+    }
+    match /tool_usage/{docId} {
+      allow read, write: if ownsResource();
+    }
+
+    // --- Study Groups (Sprint 7) — public feed, owner write --------
+    match /study_groups/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.createdBy == request.auth.uid;
+      allow update, delete: if isSignedIn() && resource.data.createdBy == request.auth.uid;
+    }
+    match /group_members/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if ownsResource();
+    }
+    match /group_messages/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if ownsResource();
+    }
+    match /group_sessions/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if ownsResource();
+    }
+    match /group_files/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if ownsResource();
+    }
+    match /group_notifications/{docId} {
+      allow read: if ownsResource();
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if ownsResource();
+    }
+
+    // --- Career Planner (Sprint 8) ----------------------------------
+    match /career_goals/{docId} {
+      allow read, write: if ownsResource();
+    }
+    match /career_progress/{docId} {
+      allow read, write: if ownsResource();
+    }
+    match /career_recommendations/{docId} {
+      allow read, write: if ownsResource();
+    }
+    match /career_skills/{docId} {
+      allow read, write: if ownsResource();
+    }
+    match /career_colleges/{docId} {
+      allow read, write: if ownsResource();
+    }
+    // career_profiles is a library — signed-in read, admin write.
+    match /career_profiles/{docId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // --- Scholarships (Sprint 9) ------------------------------------
+    match /student_scholarships/{docId} {
+      allow read, write: if ownsResource();
+    }
+    match /scholarship_profiles/{docId} {
+      allow read, write: if ownsResource();
+    }
+    match /scholarship_recommendations/{docId} {
+      allow read, write: if ownsResource();
+    }
+    match /scholarship_notifications/{docId} {
+      allow read, write: if ownsResource();
+    }
+    // scholarships is a library — signed-in read, admin write.
+    match /scholarships/{docId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // --- Freelance Marketplace (Sprint 10) --------------------------
+    match /freelance_profiles/{docId} {
+      allow read, write: if ownsResource();
+    }
+    match /job_applications/{docId} {
+      allow read, write: if ownsResource();
+    }
+    match /freelance_projects/{docId} {
+      allow read, write: if ownsResource();
+    }
+    match /freelance_messages/{docId} {
+      allow read, write: if ownsResource();
+    }
+    match /portfolios/{docId} {
+      allow read, write: if ownsResource();
+    }
+    match /reviews/{docId} {
+      allow read, write: if ownsResource();
+    }
+    match /earnings/{docId} {
+      allow read, write: if ownsResource();
+    }
+    // freelance_jobs is a marketplace listing — signed-in read, owner create/update.
+    match /freelance_jobs/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if ownsResource();
+    }
+
+    // --- Community (Sprint 11) --------------------------------------
+    // Public-feed pattern: signed-in read, owner create/update/delete.
+    match /community_posts/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if ownsResource();
+    }
+    match /community_comments/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if ownsResource();
+    }
+    match /community_profiles/{docId} {
+      allow read, write: if ownsResource();
+    }
+    match /community_notifications/{docId} {
+      allow read, write: if ownsResource();
+    }
+    match /community_reports/{docId} {
+      allow read, write: if ownsResource();
+    }
+    match /community_members/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if ownsResource();
+    }
+    match /community_followers/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if ownsResource();
+    }
+    // communities is a discoverable directory — signed-in read, creator create/update/delete.
+    match /communities/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.createdBy == request.auth.uid;
+      allow update, delete: if isSignedIn() && resource.data.createdBy == request.auth.uid;
+    }
+
+    // -----------------------------------------------------------------
+    // Default deny — anything not explicitly allowed above is denied.
+    // -----------------------------------------------------------------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

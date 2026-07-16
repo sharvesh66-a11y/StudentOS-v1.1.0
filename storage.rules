@@ -1,0 +1,51 @@
+rules_version = '2';
+
+// =====================================================================
+// StudentOS Firebase Storage Security Rules
+// =====================================================================
+//
+// Core principle: Users can ONLY read/write their own files.
+// All user-scoped files live under `users/{uid}/...`.
+//
+// Limits:
+// - Max file size: 10 MB (matches docs/ARCHITECTURE.md §5)
+// - Allowed content types: images, PDFs, plain text, markdown
+//
+// Public reads are allowed for `public/` paths (future: marketing assets).
+// =====================================================================
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // -----------------------------------------------------------------
+    // users/{uid}/... — user-scoped files
+    // -----------------------------------------------------------------
+    match /users/{uid}/{allPaths=**} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.size < 10 * 1024 * 1024 // 10 MB
+        && (
+          request.resource.contentType.matches('image/.*') ||
+          request.resource.contentType == 'application/pdf' ||
+          request.resource.contentType == 'text/plain' ||
+          request.resource.contentType == 'text/markdown'
+        );
+    }
+
+    // -----------------------------------------------------------------
+    // public/... — publicly readable, admin-writable only
+    // -----------------------------------------------------------------
+    match /public/{allPaths=**} {
+      allow read: if true;
+      allow write: if false; // Admin SDK writes only
+    }
+
+    // -----------------------------------------------------------------
+    // Default deny
+    // -----------------------------------------------------------------
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
