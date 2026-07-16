@@ -45,7 +45,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<StudentOSFirebaseError | null>(null);
 
-  const isAuthenticated = Boolean(user) && Boolean(profile);
+  const isAuthenticated = Boolean(user);
 
   // -------------------------------------------------------------------------
   // Wire onAuthStateChanged — the single subscription for the entire app.

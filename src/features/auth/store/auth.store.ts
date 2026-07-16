@@ -49,13 +49,13 @@ export const useAuthStore = create<AuthStore>((set) => ({
   setUser: (user) =>
     set((state) => ({
       user,
-      isAuthenticated: Boolean(user) && Boolean(state.profile),
+      isAuthenticated: Boolean(user),
     })),
 
   setProfile: (profile) =>
     set((state) => ({
       profile,
-      isAuthenticated: Boolean(state.user) && Boolean(profile),
+      isAuthenticated: Boolean(state.user),
     })),
 
   setLoading: (isLoading) => set({ isLoading }),
